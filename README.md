@@ -113,6 +113,16 @@ const html = Nedara.renderTemplate("user_list", {
 });
 ```
 
+Example of template definition:
+
+```html
+<template id="user_card">
+    <div>
+        <span>{{name}} - {{email}}</span>
+    </div>
+</template>
+```
+
 ## Template Syntax
 
 Nedara supports a powerful templating system with variables, loops, and conditionals.
