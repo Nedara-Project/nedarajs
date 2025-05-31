@@ -3,7 +3,7 @@
  * =========================================
  *
  * @project    NedaraJS
- * @version    0.1.0-alpha
+ * @version    0.1.1-alpha
  * @license    MIT
  * @copyright  (c) 2025 Nedara Project
  * @author     Andrea Ulliana
@@ -12,7 +12,7 @@
  * @overview   Lightweight framework for component-based web development
  *
  * @published  2025-04-07
- * @modified   2025-04-07
+ * @modified   2025-05-31
  */
 
 "use strict";
@@ -74,62 +74,78 @@ const Nedara = (function ($) {
         if (!templateContent) {
             return "";
         }
-        // Loops
+
+        // Loops with nested conditionals
         function processNestedLoops(content, context) {
             return content.replace(
                 /\{\{#(\w+)\}\}([\s\S]*?)\{\{\/\1\}\}/gm,
                 (match, key, section) => {
-                    if (!context[key] || !Array.isArray(context[key])) {
+                    const array = context[key];
+                    if (!array || !Array.isArray(array)) {
                         return "";
                     }
-                    return context[key]
-                        .map((item) => {
-                            let processedContent = section.replace(
-                                /\{\{(\w+)\}\}/g,
-                                (match, variable) => {
-                                    return item.hasOwnProperty(variable)
-                                        ? item[variable]
-                                        : match;
-                                },
-                            );
-                            // Unlimited loops
-                            processedContent = processNestedLoops(
-                                processedContent,
-                                item,
-                            );
-                            return processedContent;
-                        })
-                        .join("");
+
+                    return array.map((item) => {
+                        let processed = section;
+
+                        // Process conditionals inside each loop item
+                        processed = processed.replace(
+                            /\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/gm,
+                            (m, condition, inner) => {
+                                const conditionValue = item[condition];
+                                if (conditionValue) {
+                                    const ifSection = inner.split("{{else}}")[0];
+                                    return ifSection.trim();
+                                } else if (inner.includes("{{else}}")) {
+                                    const elseSection = inner.split("{{else}}")[1];
+                                    return elseSection.trim();
+                                }
+                                return "";
+                            },
+                        );
+
+                        // Replace variables
+                        processed = processed.replace(
+                            /\{\{(\w+)\}\}/g,
+                            (m, variable) => (item.hasOwnProperty(variable) ? item[variable] : m),
+                        );
+
+                        // Recursively process nested loops
+                        processed = processNestedLoops(processed, item);
+                        return processed;
+                    }).join("");
                 },
             );
         }
-        let renderedContent = processNestedLoops(templateContent, data);
-        // Conditional
-        renderedContent = renderedContent.replace(
+
+        // First pass: process loops (with nested ifs handled in loop body)
+        let rendered = processNestedLoops(templateContent, data);
+
+        // Global-level conditionals
+        rendered = rendered.replace(
             /\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/gm,
             (match, condition, section) => {
                 const conditionResult = data[condition];
                 if (conditionResult) {
-                    const ifSection = section.split("{{else}}")[0];
-                    return ifSection.trim();
+                    return section.split("{{else}}")[0].trim();
                 } else if (section.includes("{{else}}")) {
-                    const elseSection = section.split("{{else}}")[1];
-                    return elseSection.trim();
+                    return section.split("{{else}}")[1].trim();
                 }
                 return "";
             },
         );
-        // Simple variable
-        renderedContent = renderedContent.replace(
+
+        // Global-level simple variables
+        rendered = rendered.replace(
             /\{\{(\w+)\}\}/gm,
-            (match, key) => {
-                return data.hasOwnProperty(key) ? data[key] : match;
-            },
+            (match, key) => data.hasOwnProperty(key) ? data[key] : match,
         );
+
         // Trick used to avoid Document-Fragment behavior => section from templateContent not matching
         // Any <nedara-*> tag is rendered into original HTML tag after content rendering
-        renderedContent = renderedContent.replace(/nedara-(\w+)/g, "$1");
-        return renderedContent;
+        rendered = rendered.replace(/nedara-(\w+)/g, "$1");
+
+        return rendered;
     }
 
     /**
