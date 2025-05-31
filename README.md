@@ -2,6 +2,8 @@
 
 A lightweight, easy-to-use JavaScript framework for web development that brings you back to the essentials.
 
+You can find an example application here: [NedaraJS Demo](https://github.com/Nedara-Project/nedarajs-demo)
+
 ## Table of Contents
 
 1. [Overview](#overview)
