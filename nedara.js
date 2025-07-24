@@ -3,7 +3,7 @@
  * =========================================
  *
  * @project    NedaraJS
- * @version    0.1.1-alpha
+ * @version    0.1.2-alpha
  * @license    MIT
  * @copyright  (c) 2025 Nedara Project
  * @author     Andrea Ulliana
@@ -12,7 +12,7 @@
  * @overview   Lightweight framework for component-based web development
  *
  * @published  2025-04-07
- * @modified   2025-05-31
+ * @modified   2025-07-24
  */
 
 "use strict";
@@ -118,8 +118,27 @@ const Nedara = (function ($) {
             );
         }
 
+        function processConditionals(content, context) {
+            return content.replace(/\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/gm, (match, condition, inner) => {
+                const conditionValue = context[condition];
+
+                // Support for nested if inside this block
+                const innerProcessed = processConditionals(inner, context); // recursion
+
+                if (conditionValue) {
+                    const ifSection = innerProcessed.split("{{else}}")[0];
+                    return ifSection.trim();
+                } else if (inner.includes("{{else}}")) {
+                    const elseSection = innerProcessed.split("{{else}}")[1];
+                    return elseSection.trim();
+                }
+                return "";
+            });
+        }
+
         // First pass: process loops (with nested ifs handled in loop body)
         let rendered = processNestedLoops(templateContent, data);
+        rendered = processConditionals(rendered, data);
 
         // Global-level conditionals
         rendered = rendered.replace(
