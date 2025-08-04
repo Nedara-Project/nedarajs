@@ -4,6 +4,14 @@ A lightweight, easy-to-use JavaScript framework for web development that brings 
 
 You can find an example application here: [NedaraJS Demo](https://github.com/Nedara-Project/nedarajs-demo)
 
+### Public applications or projects made with NedaraJS
+
+- [Nedara LWS](https://github.com/Nedara-Project/nedara-lws) > Linux Web Service Manager
+- [Nedara Monitoring](https://github.com/Nedara-Project/nedara-monitoring) > Linux and PostgreSQL Server Monitoring
+- [RandomDraw](https://randomdraw.io) > Real-time Collaborative Random Draw Tool
+
+...and more 🤠
+
 ## Table of Contents
 
 1. [Overview](#overview)
