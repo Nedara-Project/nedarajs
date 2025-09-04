@@ -3,7 +3,7 @@
  * =========================================
  *
  * @project    NedaraJS
- * @version    0.1.2-alpha
+ * @version    0.1.3-alpha
  * @license    MIT
  * @copyright  (c) 2025 Nedara Project
  * @author     Andrea Ulliana
@@ -12,7 +12,7 @@
  * @overview   Lightweight framework for component-based web development
  *
  * @published  2025-04-07
- * @modified   2025-07-24
+ * @modified   2025-08-15
  */
 
 "use strict";
@@ -41,6 +41,32 @@ const Nedara = (function ($) {
             return null;
         }
         return template.innerHTML.trim();
+    }
+
+    function getValueFromPath(obj, path) {
+        return path.split(".").reduce((acc, key) => {
+            if (acc && typeof acc === "object" && key in acc) {
+                return acc[key];
+            }
+            return undefined;
+        }, obj);
+    }
+
+    function evaluateExpression(expr, context) {
+        const sanitized = expr.replace(/\b[\w.]+\b/g, (match) => {
+            const val = getValueFromPath(context, match);
+            if (val !== undefined) {
+                return typeof val === "string" ? JSON.stringify(val) : val;
+            }
+            return match;
+        });
+
+        try {
+            return Function('"use strict"; return (' + sanitized + ')')();
+        } catch (err) {
+            console.error("Error evaluating expression:", expr, err);
+            return false;
+        }
     }
 
     // ************************************************************
@@ -75,12 +101,49 @@ const Nedara = (function ($) {
             return "";
         }
 
-        // Loops with nested conditionals
+        function processConditionals(content, context) {
+            return content.replace(
+                /\{\{#if (.+?)\}\}([\s\S]*?)\{\{\/if\}\}/gm,
+                (match, conditionExpr, inner) => {
+                    const conditionValue = evaluateExpression(conditionExpr.trim(), context);
+                    const innerProcessed = processConditionals(inner, context);
+
+                    if (conditionValue) {
+                        const ifSection = innerProcessed.split("{{else}}")[0];
+                        return ifSection.trim();
+                    } else if (inner.includes("{{else}}")) {
+                        const elseSection = innerProcessed.split("{{else}}")[1];
+                        return elseSection.trim();
+                    }
+                    return "";
+                },
+            );
+        }
+
+        function processSubConditionals(content, context) {
+            return content.replace(
+                /\{\{#subif (.+?)\}\}([\s\S]*?)\{\{\/subif\}\}/gm,
+                (match, conditionExpr, inner) => {
+                    const conditionValue = evaluateExpression(conditionExpr.trim(), context);
+                    const innerProcessed = processConditionals(inner, context);
+
+                    if (conditionValue) {
+                        const ifSection = innerProcessed.split("{{subelse}}")[0];
+                        return ifSection.trim();
+                    } else if (inner.includes("{{subelse}}")) {
+                        const elseSection = innerProcessed.split("{{subelse}}")[1];
+                        return elseSection.trim();
+                    }
+                    return "";
+                },
+            );
+        }
+
         function processNestedLoops(content, context) {
             return content.replace(
-                /\{\{#(\w+)\}\}([\s\S]*?)\{\{\/\1\}\}/gm,
+                /\{\{#([\w.]+)\}\}([\s\S]*?)\{\{\/\1\}\}/gm,
                 (match, key, section) => {
-                    const array = context[key];
+                    const array = getValueFromPath(context, key);
                     if (!array || !Array.isArray(array)) {
                         return "";
                     }
@@ -88,29 +151,17 @@ const Nedara = (function ($) {
                     return array.map((item) => {
                         let processed = section;
 
-                        // Process conditionals inside each loop item
+                        processed = processConditionals(processed, item);
+                        processed = processSubConditionals(processed, item);
+
                         processed = processed.replace(
-                            /\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/gm,
-                            (m, condition, inner) => {
-                                const conditionValue = item[condition];
-                                if (conditionValue) {
-                                    const ifSection = inner.split("{{else}}")[0];
-                                    return ifSection.trim();
-                                } else if (inner.includes("{{else}}")) {
-                                    const elseSection = inner.split("{{else}}")[1];
-                                    return elseSection.trim();
-                                }
-                                return "";
+                            /\{\{([\w.]+)\}\}/g,
+                            (m, variable) => {
+                                const val = getValueFromPath(item, variable);
+                                return val !== undefined ? val : m;
                             },
                         );
 
-                        // Replace variables
-                        processed = processed.replace(
-                            /\{\{(\w+)\}\}/g,
-                            (m, variable) => (item.hasOwnProperty(variable) ? item[variable] : m),
-                        );
-
-                        // Recursively process nested loops
                         processed = processNestedLoops(processed, item);
                         return processed;
                     }).join("");
@@ -118,33 +169,14 @@ const Nedara = (function ($) {
             );
         }
 
-        function processConditionals(content, context) {
-            return content.replace(/\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/gm, (match, condition, inner) => {
-                const conditionValue = context[condition];
-
-                // Support for nested if inside this block
-                const innerProcessed = processConditionals(inner, context); // recursion
-
-                if (conditionValue) {
-                    const ifSection = innerProcessed.split("{{else}}")[0];
-                    return ifSection.trim();
-                } else if (inner.includes("{{else}}")) {
-                    const elseSection = innerProcessed.split("{{else}}")[1];
-                    return elseSection.trim();
-                }
-                return "";
-            });
-        }
-
-        // First pass: process loops (with nested ifs handled in loop body)
         let rendered = processNestedLoops(templateContent, data);
         rendered = processConditionals(rendered, data);
+        rendered = processSubConditionals(rendered, data);
 
-        // Global-level conditionals
         rendered = rendered.replace(
-            /\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/gm,
+            /\{\{#if (.+?)\}\}([\s\S]*?)\{\{\/if\}\}/gm,
             (match, condition, section) => {
-                const conditionResult = data[condition];
+                const conditionResult = evaluateExpression(condition.trim(), data);
                 if (conditionResult) {
                     return section.split("{{else}}")[0].trim();
                 } else if (section.includes("{{else}}")) {
@@ -154,14 +186,14 @@ const Nedara = (function ($) {
             },
         );
 
-        // Global-level simple variables
         rendered = rendered.replace(
-            /\{\{(\w+)\}\}/gm,
-            (match, key) => data.hasOwnProperty(key) ? data[key] : match,
+            /\{\{([\w.]+)\}\}/gm,
+            (match, key) => {
+                const val = getValueFromPath(data, key);
+                return val !== undefined ? val : match;
+            },
         );
 
-        // Trick used to avoid Document-Fragment behavior => section from templateContent not matching
-        // Any <nedara-*> tag is rendered into original HTML tag after content rendering
         rendered = rendered.replace(/nedara-(\w+)/g, "$1");
 
         return rendered;

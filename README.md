@@ -9,6 +9,7 @@ You can find an example application here: [NedaraJS Demo](https://github.com/Ned
 - [Nedara LWS](https://github.com/Nedara-Project/nedara-lws) > Linux Web Service Manager
 - [Nedara Monitoring](https://github.com/Nedara-Project/nedara-monitoring) > Linux and PostgreSQL Server Monitoring
 - [RandomDraw](https://randomdraw.io) > Real-time Collaborative Random Draw Tool
+- [Plob](https://plob.io) > Real-time file sharing with no external servers
 
 ...and more 🤠
 
@@ -25,6 +26,7 @@ You can find an example application here: [NedaraJS Demo](https://github.com/Ned
    - [Loops](#loops)
    - [Conditionals](#conditionals)
    - [Nested Loops](#nested-loops)
+   - [Nested Conditionals](#nested-conditionals)
 6. [API Reference](#api-reference)
    - [Core Methods](#core-methods)
    - [Widget Object](#widget-object)
@@ -139,15 +141,21 @@ Nedara supports a powerful templating system with variables, loops, and conditio
 
 ### Variables
 
-Simple placeholders for dynamic content:
+Simple placeholders for dynamic content with support for object path access:
 
 ```html
-<p>Hello, {{name}}!</p>
+<p>Hello, {{recipient.name}}!</p>
+<p>Your email is: {{recipient.email}}</p>
 ```
 
 ```javascript
-Nedara.renderTemplate("greeting", { name: "John Doe" });
-// Output: <p>Hello, John Doe!</p>
+Nedara.renderTemplate("greeting", {
+    recipient: {
+        name: "John Doe",
+        email: "john@example.com",
+    }
+});
+// Output: <p>Hello, John Doe!</p><p>Your email is: john@example.com</p>
 ```
 
 ### Loops
@@ -174,7 +182,7 @@ Nedara.renderTemplate("product_list", {
 
 ### Conditionals
 
-Display content based on conditions:
+Display content based on conditions with support for expressions:
 
 ```html
 {{#if isAdmin}}
@@ -182,14 +190,26 @@ Display content based on conditions:
 {{else}}
   <p>You don't have permission</p>
 {{/if}}
+
+{{#if user.role === 'editor'}}
+  <button>Edit Content</button>
+{{else}}
+  <p>No access granted</p>
+{{/if}}
+
+{{#if items.length}}
+  <p>There are {{items.length}} items available</p>
+{{else}}
+  <p>No items found</p>
+{{/if}}
 ```
 
 ```javascript
-Nedara.renderTemplate("user_actions", { isAdmin: true });
-// Output: <button>Admin Actions</button>
-
-Nedara.renderTemplate("user_actions", { isAdmin: false });
-// Output: <p>You don't have permission</p>
+Nedara.renderTemplate("user_actions", {
+    isAdmin: true,
+    user: { role: 'editor' },
+    items: [1, 2, 3]
+});
 ```
 
 ### Nested Loops
@@ -227,6 +247,41 @@ Nedara.renderTemplate("catalog", {
             ]
         }
     ]
+});
+```
+
+### Nested Conditionals
+
+Use nested conditionals with `subif` and `subelse`:
+
+```html
+{{#if user.loggedIn}}
+  <div class="user-panel">
+    <p>Welcome, {{user.name}}!</p>
+
+    {{#subif user.role === 'admin'}}
+      <div class="admin-section">
+        <h3>Admin Dashboard</h3>
+      </div>
+    {{/subif}}
+
+    <button>Logout</button>
+  </div>
+{{else}}
+  <div class="login-prompt">
+    <p>Please log in to continue</p>
+    <button>Login</button>
+  </div>
+{{/if}}
+```
+
+```javascript
+Nedara.renderTemplate("user_interface", {
+    user: {
+        loggedIn: true,
+        name: "John Doe",
+        role: "admin"
+    },
 });
 ```
 
