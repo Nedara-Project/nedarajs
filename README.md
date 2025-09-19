@@ -1,4 +1,8 @@
-# Nedara JS
+# Nedara JavaScript Framework
+
+<p align="center">
+ <img src="nedarajs.png" width="200" height="200">
+</p>
 
 A lightweight, easy-to-use JavaScript framework for web development that brings you back to the essentials.
 
