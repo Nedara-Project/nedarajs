@@ -3,7 +3,7 @@
  * =========================================
  *
  * @project    NedaraJS
- * @version    0.1.3-alpha
+ * @version    0.1.4-alpha
  * @license    MIT
  * @copyright  (c) 2025 Nedara Project
  * @author     Andrea Ulliana
@@ -12,7 +12,7 @@
  * @overview   Lightweight framework for component-based web development
  *
  * @published  2025-04-07
- * @modified   2025-08-15
+ * @modified   2025-12-05
  */
 
 "use strict";
@@ -106,16 +106,8 @@ const Nedara = (function ($) {
                 /\{\{#if (.+?)\}\}([\s\S]*?)\{\{\/if\}\}/gm,
                 (match, conditionExpr, inner) => {
                     const conditionValue = evaluateExpression(conditionExpr.trim(), context);
-                    const innerProcessed = processConditionals(inner, context);
-
-                    if (conditionValue) {
-                        const ifSection = innerProcessed.split("{{else}}")[0];
-                        return ifSection.trim();
-                    } else if (inner.includes("{{else}}")) {
-                        const elseSection = innerProcessed.split("{{else}}")[1];
-                        return elseSection.trim();
-                    }
-                    return "";
+                    const [ifPart, elsePart] = inner.split("{{else}}").map(s => s.trim());
+                    return conditionValue ? ifPart : (elsePart || "");
                 },
             );
         }
@@ -139,30 +131,30 @@ const Nedara = (function ($) {
             );
         }
 
-        function processNestedLoops(content, context) {
+        function processNestedLoops(content, parentContext) {
             return content.replace(
                 /\{\{#([\w.]+)\}\}([\s\S]*?)\{\{\/\1\}\}/gm,
                 (match, key, section) => {
-                    const array = getValueFromPath(context, key);
+                    const array = getValueFromPath(parentContext, key);
                     if (!array || !Array.isArray(array)) {
                         return "";
                     }
 
-                    return array.map((item) => {
+                    return array.map(item => {
+                        const context = { ...parentContext, ...item };
+
                         let processed = section;
 
-                        processed = processConditionals(processed, item);
-                        processed = processSubConditionals(processed, item);
+                        processed = processNestedLoops(processed, context);
 
-                        processed = processed.replace(
-                            /\{\{([\w.]+)\}\}/g,
-                            (m, variable) => {
-                                const val = getValueFromPath(item, variable);
-                                return val !== undefined ? val : m;
-                            },
-                        );
+                        processed = processConditionals(processed, context);
+                        processed = processSubConditionals(processed, context);
 
-                        processed = processNestedLoops(processed, item);
+                        processed = processed.replace(/\{\{([\w.]+)\}\}/g, (m, variable) => {
+                            const val = getValueFromPath(context, variable);
+                            return val !== undefined ? val : m;
+                        });
+
                         return processed;
                     }).join("");
                 },
