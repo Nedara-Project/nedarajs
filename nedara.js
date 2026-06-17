@@ -17,14 +17,126 @@
 
 "use strict";
 
-const Nedara = (function ($) {
+const Nedara = (function () {
     const widgets = {};
     let templateDoc = null;
     let _widgetCounter = 0;
 
     // ************************************************************
+    // * DOM UTILITY (NEl)
+    // ************************************************************
+
+    /**
+     * Minimal DOM wrapper — replaces jQuery's $() for internal and user-facing
+     * element manipulation. Accessible via Nedara.el(source).
+     */
+    class NEl {
+        constructor(source) {
+            if (Array.isArray(source)) {
+                this.elements = source.filter(n => n instanceof Element || n instanceof Document);
+            } else if (source instanceof NEl) {
+                this.elements = [...source.elements];
+            } else if (source instanceof Element || source instanceof Document) {
+                this.elements = [source];
+            } else if (source instanceof NodeList || source instanceof HTMLCollection) {
+                this.elements = Array.from(source);
+            } else if (typeof source === 'string' && source.trim()) {
+                this.elements = Array.from(document.querySelectorAll(source));
+            } else {
+                this.elements = [];
+            }
+        }
+
+        get length() { return this.elements.length; }
+        get(i) { return this.elements[i]; }
+
+        find(selector) {
+            const found = [];
+            this.elements.forEach(el => {
+                if (el.querySelectorAll) found.push(...Array.from(el.querySelectorAll(selector)));
+            });
+            return new NEl(found);
+        }
+
+        html(content) {
+            if (content === undefined) return this.elements[0]?.innerHTML ?? '';
+            this.elements.forEach(el => { el.innerHTML = content; });
+            return this;
+        }
+
+        text(content) {
+            if (content === undefined) return this.elements[0]?.textContent ?? '';
+            this.elements.forEach(el => { el.textContent = content; });
+            return this;
+        }
+
+        addClass(...classes) {
+            const cls = classes.flatMap(c => c.split(/\s+/));
+            this.elements.forEach(el => el.classList.add(...cls));
+            return this;
+        }
+
+        removeClass(...classes) {
+            const cls = classes.flatMap(c => c.split(/\s+/));
+            this.elements.forEach(el => el.classList.remove(...cls));
+            return this;
+        }
+
+        toggleClass(cls, force) {
+            this.elements.forEach(el => el.classList.toggle(cls, force));
+            return this;
+        }
+
+        toggle(show) {
+            this.elements.forEach(el => {
+                el.style.display = show === undefined
+                    ? (el.style.display === 'none' ? '' : 'none')
+                    : (show ? '' : 'none');
+            });
+            return this;
+        }
+
+        attr(name, value) {
+            if (value === undefined) return this.elements[0]?.getAttribute(name) ?? undefined;
+            this.elements.forEach(el => el.setAttribute(name, value));
+            return this;
+        }
+
+        val(value) {
+            if (value === undefined) return this.elements[0]?.value;
+            this.elements.forEach(el => { el.value = value; });
+            return this;
+        }
+
+        data(name) {
+            const el = this.elements[0];
+            if (!el?.dataset) return undefined;
+            const raw = el.dataset[name];
+            if (raw === undefined) return undefined;
+            try { return JSON.parse(raw); } catch { return raw; }
+        }
+
+        closest(selector) {
+            const el = this.elements[0]?.closest(selector);
+            return new NEl(el ? [el] : []);
+        }
+
+        each(fn) {
+            this.elements.forEach((el, i) => fn.call(el, i, el));
+            return this;
+        }
+    }
+
+    // ************************************************************
     // * PRIVATE
     // ************************************************************
+
+    function _resolveElement(source) {
+        if (!source) return null;
+        if (source instanceof Element || source instanceof Document) return source;
+        if (typeof source === 'string') return document.querySelector(source);
+        return null;
+    }
 
     /**
      * @private
@@ -207,7 +319,6 @@ const Nedara = (function ($) {
      */
     function createWidget(options) {
         const widgetId = ++_widgetCounter;
-        const namespace = `.nedara-${widgetId}`;
 
         // Methods that must never be invoked via data-js-function from the DOM.
         const BLOCKED_METHODS = new Set([
@@ -216,7 +327,7 @@ const Nedara = (function ($) {
         ]);
 
         function _fnTrigger(ev) {
-            const jsFunction = $(ev.currentTarget).data("jsFunction");
+            const jsFunction = ev.currentTarget?.dataset?.jsFunction;
             if (jsFunction && !BLOCKED_METHODS.has(jsFunction) && typeof this[jsFunction] === 'function') {
                 this[jsFunction](ev);
             }
@@ -238,53 +349,72 @@ const Nedara = (function ($) {
 
         const widget = {
             ...mergedOptions,
-            _namespace: namespace,
+            _widgetId: widgetId,
+            _boundListeners: [],
             init: function () {
                 this._bindEvents();
                 if (this._checkSelectorAndContainer()) {
-                    this.$container = $(this.container);
-                    this.$selector = $(this.selector);
+                    const container = _resolveElement(this.container);
+                    this.$container = new NEl(container);
+                    this.$selector = this.selector
+                        ? this.$container.find(this.selector)
+                        : this.$container;
                     this.start();
                 }
             },
             _checkSelectorAndContainer: function () {
-                const $container = $(this.container);
-                return (
-                    $container.length &&
-                    (this.selector === "" ||
-                        $container.find(this.selector).length)
+                const container = _resolveElement(this.container);
+                return !!(
+                    container &&
+                    (this.selector === "" || container.querySelector(this.selector))
                 );
             },
             _bindEvents: function () {
                 const self = this;
-                const $container = $(this.container);
+                const container = _resolveElement(this.container);
+                if (!container) return;
+
                 Object.keys(this.events || {}).forEach((key) => {
                     const spaceIdx = key.indexOf(" ");
                     const eventName = spaceIdx === -1 ? key : key.slice(0, spaceIdx);
-                    const selector = spaceIdx === -1 ? "" : key.slice(spaceIdx + 1);
+                    const delegateSel = spaceIdx === -1 ? "" : key.slice(spaceIdx + 1);
                     const handler = this[this.events[key]];
-                    if (handler) {
-                        $container.on(
-                            eventName + this._namespace,
-                            this.selector + (selector ? " " + selector : ""),
-                            function (e) {
-                                handler.call(self, e);
-                            },
-                        );
-                    }
+                    if (!handler) return;
+
+                    const fullSel = (this.selector + (delegateSel ? " " + delegateSel : "")).trim();
+
+                    const listener = function (e) {
+                        // Resolve the actual target element (text nodes have no closest()).
+                        const target = e.target instanceof Element ? e.target : e.target?.parentElement;
+                        if (!target) return;
+
+                        if (fullSel) {
+                            const matched = target.closest(fullSel);
+                            if (!matched || !container.contains(matched)) return;
+                            // Proxy ev.currentTarget to the matched delegated element,
+                            // mirroring jQuery's delegation behaviour.
+                            const proxy = new Proxy(e, {
+                                get(t, prop) {
+                                    if (prop === 'currentTarget') return matched;
+                                    const v = t[prop];
+                                    return typeof v === 'function' ? v.bind(t) : v;
+                                },
+                            });
+                            handler.call(self, proxy);
+                        } else {
+                            handler.call(self, e);
+                        }
+                    };
+
+                    container.addEventListener(eventName, listener);
+                    this._boundListeners.push({ container, eventName, listener });
                 });
             },
             _unbindEvents: function () {
-                const $container = $(this.container);
-                Object.keys(this.events || {}).forEach((key) => {
-                    const spaceIdx = key.indexOf(" ");
-                    const eventName = spaceIdx === -1 ? key : key.slice(0, spaceIdx);
-                    const selector = spaceIdx === -1 ? "" : key.slice(spaceIdx + 1);
-                    $container.off(
-                        eventName + this._namespace,
-                        this.selector + (selector ? " " + selector : ""),
-                    );
+                this._boundListeners.forEach(({ container, eventName, listener }) => {
+                    container.removeEventListener(eventName, listener);
                 });
+                this._boundListeners = [];
             },
             refresh: function () {
                 this._unbindEvents();
@@ -300,9 +430,11 @@ const Nedara = (function ($) {
                     ...this.events,
                     ...extensions.events,
                 };
+                newWidget._boundListeners = [];
                 return newWidget;
             },
         };
+
         widget.init();
         return widget;
     }
@@ -313,7 +445,8 @@ const Nedara = (function ($) {
         createWidget: createWidget,
         importTemplates: importTemplates,
         renderTemplate: renderTemplate,
+        el: (source) => new NEl(source),
     };
-})(jQuery);
+})();
 
 export default Nedara;

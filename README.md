@@ -35,10 +35,11 @@ You can find an example application here: [NedaraJS Demo](https://github.com/Ned
    - [Core Methods](#core-methods)
    - [Widget Object](#widget-object)
 7. [Complete Examples](#complete-examples)
-8. [Dependencies](#dependencies)
-9. [Limitations and Extensions](#limitations-and-extensions)
-10. [Contributing](#contributing)
-11. [License](#license)
+8. [DOM Utility — Nedara.el()](#dom-utility--nedarael)
+9. [Dependencies](#dependencies)
+10. [Limitations and Extensions](#limitations-and-extensions)
+11. [Contributing](#contributing)
+12. [License](#license)
 
 ## Overview
 
@@ -50,15 +51,14 @@ Nedara JS is a minimalist JavaScript framework designed to simplify widget manag
 - **Intuitive Widget System**: Easily create, manage, and extend UI components
 - **Powerful Templating**: Built-in template rendering with support for loops and conditionals
 - **Event Management**: Simplified event binding and handling
-- **jQuery Integration**: Leverages jQuery's utility functions without reinventing the wheel
-- **Framework Agnostic**: Compatible with other utility libraries like UnderscoreJS
+- **Zero Dependencies**: No jQuery or any other external library required
+- **Built-in DOM Utility**: `Nedara.el()` provides a lightweight element wrapper for common operations
 
 ## Installation
 
-Include Nedara in your project:
+Include Nedara in your project — no external dependencies required:
 
 ```html
-<script src="path/to/jquery.min.js"></script>
 <script type="module" src="path/to/nedara.js"></script>
 ```
 
@@ -379,12 +379,12 @@ const navigationWidget = Nedara.createWidget({
 
     _onNavLinkClick: function(ev) {
         ev.preventDefault();
-        const $link = $(ev.currentTarget);
-        console.log('Navigation to:', $link.attr('href'));
+        const link = ev.currentTarget;
+        console.log('Navigation to:', link.getAttribute('href'));
 
         // Update active state
         this.$selector.find('.nav-link').removeClass('active');
-        $link.addClass('active');
+        link.classList.add('active');
 
         // Additional navigation logic...
     }
@@ -428,7 +428,7 @@ const workflowWidget = Nedara.createWidget({
     },
 
     _onNameChange: function(ev) {
-        const name = $(ev.currentTarget).val();
+        const name = ev.currentTarget.value;
         const techName = this._adaptTechName(name);
 
         this.workflowData.name = name;
@@ -449,20 +449,20 @@ const workflowWidget = Nedara.createWidget({
     },
 
     _onRemoveFieldClick: function(ev) {
-        const fieldId = $(ev.currentTarget).closest('.field-item').data('fieldId');
+        const fieldId = ev.currentTarget.closest('.field-item').dataset.fieldId;
         delete this.workflowData.fields[fieldId];
         this._refreshUI();
     },
 
     _onFieldTypeChange: function(ev) {
-        const $field = $(ev.currentTarget).closest('.field-item');
-        const fieldId = $field.data('fieldId');
-        const fieldType = $(ev.currentTarget).val();
+        const field = Nedara.el(ev.currentTarget.closest('.field-item'));
+        const fieldId = field.data('fieldId');
+        const fieldType = ev.currentTarget.value;
 
         this.workflowData.fields[fieldId].type = fieldType;
 
         // Show/hide relational field options
-        $field.find('.relational-options').toggle(
+        field.find('.relational-options').toggle(
             ['m2o', 'o2m'].includes(fieldType)
         );
     },
@@ -476,10 +476,45 @@ const workflowWidget = Nedara.createWidget({
 Nedara.registerWidget("workflowWidget", workflowWidget);
 ```
 
+## DOM Utility — `Nedara.el()`
+
+NedaraJS ships a zero-dependency micro DOM wrapper, `NEl`, accessible via `Nedara.el(source)`.
+It replaces jQuery's `$()` for the most common widget operations.
+
+```javascript
+// From a CSS selector
+const el = Nedara.el('.my-button');
+
+// From a DOM element (e.g. inside an event handler)
+const el = Nedara.el(ev.currentTarget);
+```
+
+Available methods (all chainable where relevant):
+
+| Method | Description |
+|---|---|
+| `.find(selector)` | Query descendants — returns a new `NEl` |
+| `.html(content?)` | Get or set `innerHTML` |
+| `.text(content?)` | Get or set `textContent` |
+| `.attr(name, value?)` | Get or set an attribute |
+| `.val(value?)` | Get or set a form input value |
+| `.data(name)` | Read a `data-*` attribute (auto camelCase, JSON-parsed) |
+| `.addClass(...cls)` | Add one or more CSS classes |
+| `.removeClass(...cls)` | Remove one or more CSS classes |
+| `.toggleClass(cls, force?)` | Toggle a CSS class |
+| `.toggle(show?)` | Show or hide elements (`display` style) |
+| `.closest(selector)` | Walk up the DOM — returns a new `NEl` |
+| `.each(fn)` | Iterate over matched elements |
+| `.get(i)` | Return the raw DOM element at index `i` |
+| `.length` | Number of matched elements |
+
+`this.$container` and `this.$selector` inside widgets are `NEl` instances, so all methods above
+work on them out of the box.
+
 ## Dependencies
 
-- **jQuery**: Required for DOM manipulation and event handling
-- **(Optional)** UnderscoreJS or similar utility libraries can be used alongside Nedara
+NedaraJS has **no external dependencies**. It requires a modern browser with ES6+ support
+(`querySelectorAll`, `closest`, `dataset`, `Proxy`).
 
 ## Limitations and Extensions
 
