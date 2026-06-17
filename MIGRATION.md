@@ -1,22 +1,24 @@
 # NedaraJS Migration Guide
 
-## v0.1.4-alpha → v0.1.5-alpha
-
-This release introduces security fixes, bug fixes, and the removal of the jQuery
-dependency. Most of the public API is preserved, but several changes require
-updates to existing code.
+## v0.1.4-alpha → v0.1.6-alpha
 
 ---
 
 ## Table of Contents
+
+### v0.1.5-alpha — Security, bug fixes, jQuery removal
 
 1. [jQuery Removal](#1-jquery-removal)
 2. [Template Variables Are Now HTML-Escaped by Default](#2-template-variables-are-now-html-escaped-by-default)
 3. [Unresolved Template Variables](#3-unresolved-template-variables)
 4. [data-js-function Cannot Call Internal Methods](#4-data-js-function-cannot-call-internal-methods)
 5. [Nedara.registeredWidgets Removed](#5-nedararegisteredwidgets-removed)
-6. [Non-Breaking Additions](#6-non-breaking-additions)
+6. [Non-Breaking Additions (0.1.5)](#6-non-breaking-additions)
 7. [Unchanged API Surface](#7-unchanged-api-surface)
+
+### v0.1.6-alpha — Template engine rewrite
+
+8. [{{#subif}} / {{subelse}} / {{/subif}} Removed](#8-subif--subelse--subif-removed)
 
 ---
 
@@ -279,4 +281,60 @@ The following are fully backwards compatible and require no changes.
 | `this.$container` / `this.$selector` | Now `NEl` — common methods preserved |
 | `events` object in `createWidget` | Same format |
 | `data-js-function` attribute | Works for all user-defined methods |
-| Template syntax: `{{var}}`, `{{#loop}}`, `{{#if}}`, `{{#subif}}` | Unchanged |
+| Template syntax: `{{var}}`, `{{{var}}}`, `{{#loop}}`, `{{#if}}` | Unchanged |
+
+---
+
+## 8. `{{#subif}}` / `{{subelse}}` / `{{/subif}}` Removed
+
+**Versions concerned:** 0.1.5-alpha → 0.1.6-alpha
+
+The template engine has been rewritten as a proper recursive-descent parser (tokenizer
+→ AST → renderer). As a result, `{{#if}}` blocks can now be nested to **any depth**
+inside other `{{#if}}` blocks or loops, with no special syntax needed.
+
+The `{{#subif}}`, `{{subelse}}`, and `{{/subif}}` tags are removed. They render as
+literal text or are silently dropped, depending on the tag.
+
+The migration is a mechanical find-and-replace across your template files:
+
+| Before (0.1.5-alpha) | After (0.1.6-alpha) |
+|---|---|
+| `{{#subif expr}}` | `{{#if expr}}` |
+| `{{subelse}}` | `{{else}}` |
+| `{{/subif}}` | `{{/if}}` |
+
+**Before:**
+
+```html
+{{#if user.loggedIn}}
+  <p>Welcome, {{user.name}}!</p>
+
+  {{#subif user.role === 'admin'}}
+    <span>Admin</span>
+  {{subelse}}
+    <span>User</span>
+  {{/subif}}
+{{else}}
+  <p>Please log in</p>
+{{/if}}
+```
+
+**After:**
+
+```html
+{{#if user.loggedIn}}
+  <p>Welcome, {{user.name}}!</p>
+
+  {{#if user.role === 'admin'}}
+    <span>Admin</span>
+  {{else}}
+    <span>User</span>
+  {{/if}}
+{{else}}
+  <p>Please log in</p>
+{{/if}}
+```
+
+Nesting is now unlimited — you can place `{{#if}}` inside `{{#if}}` inside loops,
+and all combinations work correctly at any depth.

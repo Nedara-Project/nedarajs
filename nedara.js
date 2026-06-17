@@ -3,7 +3,7 @@
  * =========================================
  *
  * @project    NedaraJS
- * @version    0.1.5-alpha
+ * @version    0.1.6-alpha
  * @license    MIT
  * @copyright  (c) 2025 Nedara Project
  * @author     Andrea Ulliana
@@ -197,6 +197,139 @@ const Nedara = (function () {
     }
 
     // ************************************************************
+    // * TEMPLATE ENGINE
+    // ************************************************************
+
+    /**
+     * Converts a template string into a flat list of typed tokens.
+     *
+     * Token types and their regex alternatives (in priority order):
+     *   RAW_VAR    {{{key}}}
+     *   IF         {{#if expr}}
+     *   ENDIF      {{/if}}
+     *   ELSE       {{else}}
+     *   LOOP_START {{#key}}
+     *   LOOP_END   {{/key}}
+     *   VAR        {{key}}
+     *
+     * Text between tags is emitted as TEXT tokens.
+     * Ordering matters: specific patterns appear before general ones so that
+     * e.g. {{/if}} is never captured by the generic {{/key}} alternative.
+     *
+     * @private
+     */
+    function _tokenize(template) {
+        const tokens = [];
+        const re = /\{\{\{([\w.]+)\}\}\}|\{\{#if\s+(.+?)\}\}|\{\{\/if\}\}|\{\{else\}\}|\{\{#([\w.]+)\}\}|\{\{\/([\w.]+)\}\}|\{\{([\w.]+)\}\}/g;
+        let last = 0;
+        let m;
+        while ((m = re.exec(template)) !== null) {
+            if (m.index > last) tokens.push({ type: 'TEXT', value: template.slice(last, m.index) });
+            if      (m[1] != null) tokens.push({ type: 'RAW_VAR',    key:  m[1] });
+            else if (m[2] != null) tokens.push({ type: 'IF',         expr: m[2].trim() });
+            else if (m[0] === '{{/if}}')  tokens.push({ type: 'ENDIF' });
+            else if (m[0] === '{{else}}') tokens.push({ type: 'ELSE' });
+            else if (m[3] != null) tokens.push({ type: 'LOOP_START', key:  m[3] });
+            else if (m[4] != null) tokens.push({ type: 'LOOP_END',   key:  m[4] });
+            else if (m[5] != null) tokens.push({ type: 'VAR',        key:  m[5] });
+            last = re.lastIndex;
+        }
+        if (last < template.length) tokens.push({ type: 'TEXT', value: template.slice(last) });
+        return tokens;
+    }
+
+    /**
+     * Recursive-descent parser: turns a token list into an AST.
+     *
+     * Node shapes:
+     *   { type: 'text', value }
+     *   { type: 'var',  key, raw }
+     *   { type: 'if',   expr, ifBranch: Node[], elseBranch: Node[] }
+     *   { type: 'loop', key,  body: Node[] }
+     *
+     * Each block tag consumes its own closing tag before returning,
+     * so any level of nesting is handled correctly without special cases.
+     *
+     * @private
+     */
+    function _parse(tokens) {
+        let pos = 0;
+
+        function parseBlock(stop) {
+            const result = [];
+            while (pos < tokens.length) {
+                const t = tokens[pos];
+                if (stop.includes(t.type)) break;
+
+                if (t.type === 'TEXT') {
+                    result.push({ type: 'text', value: t.value });
+                    pos++;
+                } else if (t.type === 'VAR') {
+                    result.push({ type: 'var', key: t.key, raw: false });
+                    pos++;
+                } else if (t.type === 'RAW_VAR') {
+                    result.push({ type: 'var', key: t.key, raw: true });
+                    pos++;
+                } else if (t.type === 'IF') {
+                    const expr = t.expr;
+                    pos++;
+                    const ifBranch = parseBlock(['ELSE', 'ENDIF']);
+                    let elseBranch = [];
+                    if (pos < tokens.length && tokens[pos].type === 'ELSE') {
+                        pos++;
+                        elseBranch = parseBlock(['ENDIF']);
+                    }
+                    if (pos < tokens.length && tokens[pos].type === 'ENDIF') pos++;
+                    result.push({ type: 'if', expr, ifBranch, elseBranch });
+                } else if (t.type === 'LOOP_START') {
+                    const key = t.key;
+                    pos++;
+                    const body = parseBlock(['LOOP_END']);
+                    if (pos < tokens.length && tokens[pos].type === 'LOOP_END') pos++;
+                    result.push({ type: 'loop', key, body });
+                } else {
+                    pos++; // orphaned closing tag in invalid template — skip
+                }
+            }
+            return result;
+        }
+
+        return parseBlock([]);
+    }
+
+    /**
+     * Recursively renders an AST node list against a data context.
+     * @private
+     */
+    function _renderNodes(nodeList, context) {
+        return nodeList.map(n => {
+            switch (n.type) {
+                case 'text':
+                    return n.value;
+                case 'var': {
+                    const val = getValueFromPath(context, n.key);
+                    if (val == null) return '';
+                    return n.raw ? String(val) : _escapeHtml(val);
+                }
+                case 'if':
+                    return _renderNodes(
+                        evaluateExpression(n.expr, context) ? n.ifBranch : n.elseBranch,
+                        context
+                    );
+                case 'loop': {
+                    const arr = getValueFromPath(context, n.key);
+                    if (!Array.isArray(arr)) return '';
+                    return arr.map(item =>
+                        _renderNodes(n.body, { ...context, ...item })
+                    ).join('');
+                }
+                default:
+                    return '';
+            }
+        }).join('');
+    }
+
+    // ************************************************************
     // * PUBLIC
     // ************************************************************
 
@@ -227,80 +360,9 @@ const Nedara = (function () {
      */
     function renderTemplate(id, data = {}) {
         const templateContent = _getTemplate(id);
-        if (!templateContent) {
-            return "";
-        }
-
-        function processConditionals(content, context) {
-            return content.replace(
-                /\{\{#if (.+?)\}\}([\s\S]*?)\{\{\/if\}\}/gm,
-                (match, conditionExpr, inner) => {
-                    const conditionValue = evaluateExpression(conditionExpr.trim(), context);
-                    const [ifPart, elsePart] = inner.split("{{else}}").map(s => s.trim());
-                    return conditionValue ? ifPart : (elsePart || "");
-                },
-            );
-        }
-
-        function processSubConditionals(content, context) {
-            return content.replace(
-                /\{\{#subif (.+?)\}\}([\s\S]*?)\{\{\/subif\}\}/gm,
-                (match, conditionExpr, inner) => {
-                    const conditionValue = evaluateExpression(conditionExpr.trim(), context);
-                    const innerProcessed = processConditionals(inner, context);
-
-                    if (conditionValue) {
-                        return innerProcessed.split("{{subelse}}")[0].trim();
-                    } else if (inner.includes("{{subelse}}")) {
-                        return innerProcessed.split("{{subelse}}")[1].trim();
-                    }
-                    return "";
-                },
-            );
-        }
-
-        // {{{raw}}} must be processed before {{escaped}} to avoid partial matches on triple braces.
-        function processVariables(content, context) {
-            let result = content.replace(/\{\{\{([\w.]+)\}\}\}/g, (m, variable) => {
-                const val = getValueFromPath(context, variable);
-                return val != null ? String(val) : "";
-            });
-            result = result.replace(/\{\{([\w.]+)\}\}/g, (m, variable) => {
-                const val = getValueFromPath(context, variable);
-                return val != null ? _escapeHtml(val) : "";
-            });
-            return result;
-        }
-
-        function processNestedLoops(content, parentContext) {
-            return content.replace(
-                /\{\{#([\w.]+)\}\}([\s\S]*?)\{\{\/\1\}\}/gm,
-                (match, key, section) => {
-                    const array = getValueFromPath(parentContext, key);
-                    if (!array || !Array.isArray(array)) {
-                        return "";
-                    }
-
-                    return array.map(item => {
-                        const context = { ...parentContext, ...item };
-                        let processed = section;
-                        processed = processNestedLoops(processed, context);
-                        processed = processConditionals(processed, context);
-                        processed = processSubConditionals(processed, context);
-                        processed = processVariables(processed, context);
-                        return processed;
-                    }).join("");
-                },
-            );
-        }
-
-        let rendered = processNestedLoops(templateContent, data);
-        rendered = processConditionals(rendered, data);
-        rendered = processSubConditionals(rendered, data);
-        rendered = processVariables(rendered, data);
-        rendered = rendered.replace(/nedara-(\w+)/g, "$1");
-
-        return rendered;
+        if (!templateContent) return '';
+        const ast = _parse(_tokenize(templateContent));
+        return _renderNodes(ast, data).replace(/nedara-(\w+)/g, '$1');
     }
 
     /**

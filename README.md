@@ -30,7 +30,7 @@ You can find an example application here: [NedaraJS Demo](https://github.com/Ned
    - [Loops](#loops)
    - [Conditionals](#conditionals)
    - [Nested Loops](#nested-loops)
-   - [Nested Conditionals](#nested-conditionals)
+   - [Nested Conditionals](#nested-conditionals) (arbitrary depth)
 6. [API Reference](#api-reference)
    - [Core Methods](#core-methods)
    - [Widget Object](#widget-object)
@@ -263,18 +263,26 @@ Nedara.renderTemplate("catalog", {
 
 ### Nested Conditionals
 
-Use nested conditionals with `subif` and `subelse`:
+`{{#if}}` blocks can be nested to any depth inside other `{{#if}}` blocks or loops.
+No special syntax is needed — use the same `{{#if}}` / `{{else}}` / `{{/if}}` tags:
 
 ```html
 {{#if user.loggedIn}}
   <div class="user-panel">
     <p>Welcome, {{user.name}}!</p>
 
-    {{#subif user.role === 'admin'}}
+    {{#if user.role === 'admin'}}
       <div class="admin-section">
         <h3>Admin Dashboard</h3>
+        {{#if user.verified}}
+          <span class="badge">Verified</span>
+        {{else}}
+          <span class="badge pending">Pending verification</span>
+        {{/if}}
       </div>
-    {{/subif}}
+    {{else}}
+      <p>Standard access</p>
+    {{/if}}
 
     <button>Logout</button>
   </div>
@@ -291,7 +299,8 @@ Nedara.renderTemplate("user_interface", {
     user: {
         loggedIn: true,
         name: "John Doe",
-        role: "admin"
+        role: "admin",
+        verified: true,
     },
 });
 ```
