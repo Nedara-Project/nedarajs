@@ -145,11 +145,14 @@ Nedara supports a powerful templating system with variables, loops, and conditio
 
 ### Variables
 
-Simple placeholders for dynamic content with support for object path access:
+Simple placeholders for dynamic content with support for object path access.
+
+By default, values are **HTML-escaped** to prevent XSS. Use triple braces `{{{var}}}` to inject raw HTML:
 
 ```html
 <p>Hello, {{recipient.name}}!</p>
 <p>Your email is: {{recipient.email}}</p>
+<div>{{{recipient.bio}}}</div>  <!-- raw HTML, not escaped -->
 ```
 
 ```javascript
@@ -157,10 +160,14 @@ Nedara.renderTemplate("greeting", {
     recipient: {
         name: "John Doe",
         email: "john@example.com",
+        bio: "<strong>Developer</strong>",
     }
 });
 // Output: <p>Hello, John Doe!</p><p>Your email is: john@example.com</p>
+//         <div><strong>Developer</strong></div>
 ```
+
+> **Note:** Variables that have no matching key in `data` render as an empty string.
 
 ### Loops
 
