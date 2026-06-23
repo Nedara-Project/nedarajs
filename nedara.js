@@ -83,7 +83,10 @@ const Nedara = (function () {
         }
 
         toggleClass(cls, force) {
-            this.elements.forEach(el => el.classList.toggle(cls, force));
+            const classes = cls.trim().split(/\s+/);
+            this.elements.forEach(el =>
+                classes.forEach(c => force === undefined ? el.classList.toggle(c) : el.classList.toggle(c, force))
+            );
             return this;
         }
 
