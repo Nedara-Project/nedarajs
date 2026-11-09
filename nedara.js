@@ -3,7 +3,7 @@
  * =========================================
  *
  * @project    NedaraJS
- * @version    0.1.6-alpha
+ * @version    0.1.7-alpha
  * @license    MIT
  * @copyright  (c) 2025 Nedara Project
  * @author     Andrea Ulliana
@@ -12,7 +12,7 @@
  * @overview   Lightweight framework for component-based web development
  *
  * @published  2025-04-07
- * @modified   2026-06-17
+ * @modified   2026-11-09
  */
 
 "use strict";

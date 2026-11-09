@@ -1,6 +1,6 @@
 # NedaraJS Migration Guide
 
-## v0.1.4-alpha → v0.1.6-alpha
+## v0.1.4-alpha → v0.1.7-alpha
 
 ---
 
@@ -20,7 +20,7 @@
 
 8. [{{#subif}} / {{subelse}} / {{/subif}} Removed](#8-subif--subelse--subif-removed)
 
-### Unreleased — CSP-safe expressions, data-safe tag prefix
+### v0.1.7-alpha — CSP-safe expressions, data-safe tag prefix
 
 9. [{{#if}} Expressions No Longer Use eval](#9-if-expressions-no-longer-use-eval)
 10. [nedara- Prefix Only Rewritten in Tag Names](#10-nedara--prefix-only-rewritten-in-tag-names)
@@ -348,7 +348,7 @@ and all combinations work correctly at any depth.
 
 ## 9. `{{#if}}` Expressions No Longer Use `eval`
 
-**Versions concerned:** 0.1.6-alpha → unreleased
+**Versions concerned:** 0.1.6-alpha → 0.1.7-alpha
 
 `{{#if}}` expressions used to be turned into JavaScript source and run with
 `Function(...)`. That was blocked by any Content-Security-Policy without
@@ -389,7 +389,7 @@ Nedara.renderTemplate('list', { items, hasDone: items.some(i => i.done) });
 
 ## 10. `nedara-` Prefix Only Rewritten in Tag Names
 
-**Versions concerned:** 0.1.6-alpha → unreleased
+**Versions concerned:** 0.1.6-alpha → 0.1.7-alpha
 
 `renderTemplate()` removed every `nedara-` it found in the **rendered output**, so
 data was altered too: `{{project}}` set to `"nedara-monitoring"` rendered as

@@ -555,7 +555,7 @@ Available methods (all chainable where relevant):
 | `.data(name)` | Read a `data-*` attribute (auto camelCase, JSON-parsed) |
 | `.addClass(...cls)` | Add one or more CSS classes |
 | `.removeClass(...cls)` | Remove one or more CSS classes |
-| `.toggleClass(cls, force?)` | Toggle a CSS class |
+| `.toggleClass(cls, force?)` | Toggle one or more space-separated CSS classes |
 | `.toggle(show?)` | Show or hide elements (`display` style) |
 | `.closest(selector)` | Walk up the DOM — returns a new `NEl` |
 | `.each(fn)` | Iterate over matched elements |
