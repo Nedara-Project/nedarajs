@@ -182,17 +182,120 @@ const Nedara = (function () {
         }, obj);
     }
 
-    function evaluateExpression(expr, context) {
-        const sanitized = expr.replace(/\b[\w.]+\b/g, (match) => {
-            const val = getValueFromPath(context, match);
-            if (val !== undefined) {
-                return typeof val === "string" ? JSON.stringify(val) : val;
-            }
-            return match;
-        });
+    // ************************************************************
+    // * EXPRESSION EVALUATOR
+    // ************************************************************
 
+    const _EXPR_LITERALS = new Map([
+        ['true', true], ['false', false], ['null', null], ['undefined', undefined],
+    ]);
+
+    const _BINARY_OPS = {
+        '||':  (a, b) => a || b,
+        '&&':  (a, b) => a && b,
+        '===': (a, b) => a === b,
+        '!==': (a, b) => a !== b,
+        '==':  (a, b) => a == b,
+        '!=':  (a, b) => a != b,
+        '<':   (a, b) => a < b,
+        '<=':  (a, b) => a <= b,
+        '>':   (a, b) => a > b,
+        '>=':  (a, b) => a >= b,
+    };
+
+    const _HTML_ENTITIES = { lt: '<', gt: '>', amp: '&', quot: '"', '#39': "'", '#039': "'", nbsp: ' ' };
+
+    /**
+     * Decodes the entities the browser adds when it re-serializes a
+     * <template> element (`a &gt; 1`, `a &amp;&amp; b`), in a single pass
+     * so that `&amp;lt;` is not decoded twice.
+     * @private
+     */
+    function _decodeEntities(str) {
+        return str.replace(/&(lt|gt|amp|quot|#0?39|nbsp);/g, (_, name) => _HTML_ENTITIES[name]);
+    }
+
+    /**
+     * Splits an {{#if}} expression into value, path and operator tokens.
+     * @private
+     */
+    function _tokenizeExpression(src) {
+        const tokens = [];
+        const re = /\s+|(\d+(?:\.\d+)?)|'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"|([A-Za-z_$][\w$]*(?:\.[\w$]+)*)|(===|!==|==|!=|<=|>=|&&|\|\||[<>!()-])/y;
+        while (re.lastIndex < src.length) {
+            const at = re.lastIndex;
+            const m = re.exec(src);
+            if (!m) throw new SyntaxError(`Unexpected character "${src[at]}" at position ${at}`);
+            if (m[1] != null) {
+                tokens.push({ type: 'value', value: Number(m[1]) });
+            } else if (m[2] != null || m[3] != null) {
+                const value = (m[2] ?? m[3]).replace(/\\(.)/g, (_, c) => ({ n: '\n', t: '\t', r: '\r' })[c] ?? c);
+                tokens.push({ type: 'value', value });
+            } else if (m[4] != null) {
+                tokens.push(_EXPR_LITERALS.has(m[4])
+                    ? { type: 'value', value: _EXPR_LITERALS.get(m[4]) }
+                    : { type: 'path', path: m[4] });
+            } else if (m[5] != null) {
+                tokens.push({ type: 'op', op: m[5] });
+            }
+        }
+        return tokens;
+    }
+
+    /**
+     * Recursive-descent evaluator over expression tokens. Precedence, lowest
+     * first: ||, &&, equality, relational, unary (! and -), primary.
+     * Paths are only ever read, never called, so no code can run.
+     * @private
+     */
+    function _evaluateTokens(tokens, context) {
+        let pos = 0;
+        const peekOp = () => (tokens[pos]?.type === 'op' ? tokens[pos].op : null);
+        const describe = (t) => (t.type === 'op' ? t.op : t.type === 'path' ? t.path : JSON.stringify(t.value));
+
+        function parseBinary(ops, next) {
+            let left = next();
+            while (ops.includes(peekOp())) {
+                const op = tokens[pos++].op;
+                left = _BINARY_OPS[op](left, next());
+            }
+            return left;
+        }
+
+        const parseOr         = () => parseBinary(['||'], parseAnd);
+        const parseAnd        = () => parseBinary(['&&'], parseEquality);
+        const parseEquality   = () => parseBinary(['===', '!==', '==', '!='], parseRelational);
+        const parseRelational = () => parseBinary(['<', '<=', '>', '>='], parseUnary);
+
+        function parseUnary() {
+            const op = peekOp();
+            if (op === '!') { pos++; return !parseUnary(); }
+            if (op === '-') { pos++; return -parseUnary(); }
+            return parsePrimary();
+        }
+
+        function parsePrimary() {
+            const t = tokens[pos++];
+            if (!t) throw new SyntaxError('Unexpected end of expression');
+            if (t.type === 'value') return t.value;
+            if (t.type === 'path') return getValueFromPath(context, t.path);
+            if (t.op === '(') {
+                const value = parseOr();
+                if (peekOp() !== ')') throw new SyntaxError('Missing closing parenthesis');
+                pos++;
+                return value;
+            }
+            throw new SyntaxError(`Unexpected token "${describe(t)}"`);
+        }
+
+        const result = parseOr();
+        if (pos < tokens.length) throw new SyntaxError(`Unexpected token "${describe(tokens[pos])}"`);
+        return result;
+    }
+
+    function evaluateExpression(expr, context) {
         try {
-            return Function('"use strict"; return (' + sanitized + ')')();
+            return _evaluateTokens(_tokenizeExpression(_decodeEntities(expr)), context);
         } catch (err) {
             console.error("Error evaluating expression:", expr, err);
             return false;
@@ -265,7 +368,8 @@ const Nedara = (function () {
                 if (stop.includes(t.type)) break;
 
                 if (t.type === 'TEXT') {
-                    result.push({ type: 'text', value: t.value });
+                    // <nedara-td> → <td>: only in template markup, never in data.
+                    result.push({ type: 'text', value: t.value.replace(/<(\/?)nedara-(?=\w)/g, '<$1') });
                     pos++;
                 } else if (t.type === 'VAR') {
                     result.push({ type: 'var', key: t.key, raw: false });
@@ -365,7 +469,7 @@ const Nedara = (function () {
         const templateContent = _getTemplate(id);
         if (!templateContent) return '';
         const ast = _parse(_tokenize(templateContent));
-        return _renderNodes(ast, data).replace(/nedara-(\w+)/g, '$1');
+        return _renderNodes(ast, data);
     }
 
     /**

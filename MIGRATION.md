@@ -20,6 +20,11 @@
 
 8. [{{#subif}} / {{subelse}} / {{/subif}} Removed](#8-subif--subelse--subif-removed)
 
+### Unreleased — CSP-safe expressions, data-safe tag prefix
+
+9. [{{#if}} Expressions No Longer Use eval](#9-if-expressions-no-longer-use-eval)
+10. [nedara- Prefix Only Rewritten in Tag Names](#10-nedara--prefix-only-rewritten-in-tag-names)
+
 ---
 
 ## 1. jQuery Removal
@@ -338,3 +343,68 @@ The migration is a mechanical find-and-replace across your template files:
 
 Nesting is now unlimited — you can place `{{#if}}` inside `{{#if}}` inside loops,
 and all combinations work correctly at any depth.
+
+---
+
+## 9. `{{#if}}` Expressions No Longer Use `eval`
+
+**Versions concerned:** 0.1.6-alpha → unreleased
+
+`{{#if}}` expressions used to be turned into JavaScript source and run with
+`Function(...)`. That was blocked by any Content-Security-Policy without
+`'unsafe-eval'`, and it let data run as code: numbers, booleans, arrays and objects
+were pasted into the source unquoted, so `{ tags: ['alert(1)'] }` with
+`{{#if tags}}` executed `alert(1)`.
+
+Expressions are now read by a built-in evaluator. Templates work under
+`script-src 'self'`, and values are only ever compared, never executed. Everything
+the README documented keeps working:
+
+```html
+{{#if isAdmin}}…{{/if}}
+{{#if user.role === 'editor'}}…{{/if}}
+{{#if items.length > 0 && !user.blocked}}…{{/if}}
+{{#if (a || b) && c}}…{{/if}}
+```
+
+See [Expression syntax](README.md#expression-syntax) for the full list. What changes:
+
+| Expression | Before | After |
+|---|---|---|
+| `missing` (path not in data) | `false` + console error | `false`, no error |
+| `!missing` | `false` + console error | `true` |
+| `a > 1`, `a && b` inside a `<template>` element | console error (the browser serializes them as `&gt;` / `&amp;&amp;`) | works |
+| Function calls, `typeof`, arithmetic, ternaries… | ran as JavaScript | `false` + console error |
+
+If a template relied on JavaScript beyond the documented syntax, compute the value in
+the data you pass to `renderTemplate` instead:
+
+```javascript
+// Before: {{#if items.filter(i => i.done).length}}
+Nedara.renderTemplate('list', { items, hasDone: items.some(i => i.done) });
+// After:  {{#if hasDone}}
+```
+
+---
+
+## 10. `nedara-` Prefix Only Rewritten in Tag Names
+
+**Versions concerned:** 0.1.6-alpha → unreleased
+
+`renderTemplate()` removed every `nedara-` it found in the **rendered output**, so
+data was altered too: `{{project}}` set to `"nedara-monitoring"` rendered as
+`monitoring`, and static text such as `<code>nedara-connect</code>` lost its prefix.
+
+The prefix is now removed only from tag names written in the template markup:
+
+| Template | Before | After |
+|---|---|---|
+| `<nedara-td>{{name}}</nedara-td>` | `<td>…</td>` | `<td>…</td>` (unchanged) |
+| `{{name}}` = `"nedara-monitoring"` | `monitoring` | `nedara-monitoring` |
+| `{{{html}}}` = `"<nedara-td>x</nedara-td>"` | `<td>x</td>` | `<nedara-td>x</nedara-td>` |
+| `<code>nedara-connect</code>` | `<code>connect</code>` | `<code>nedara-connect</code>` |
+| `<div class="nedara-box">` | `<div class="box">` | `<div class="nedara-box">` |
+
+If a template used `nedara-` outside tag names and counted on it being stripped
+(class names, ids, text), remove the prefix from the template. Any workaround that
+re-inserted values after rendering to protect them from the rewrite can be dropped.

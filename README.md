@@ -31,6 +31,7 @@ You can find an example application here: [NedaraJS Demo](https://github.com/Ned
    - [Conditionals](#conditionals)
    - [Nested Loops](#nested-loops)
    - [Nested Conditionals](#nested-conditionals) (arbitrary depth)
+   - [Table Markup in Templates](#table-markup-in-templates)
 6. [API Reference](#api-reference)
    - [Core Methods](#core-methods)
    - [Widget Object](#widget-object)
@@ -223,6 +224,29 @@ Nedara.renderTemplate("user_actions", {
 });
 ```
 
+#### Expression syntax
+
+`{{#if}}` expressions are read by a small built-in evaluator — never by `eval` or
+`Function` — so templates work under a strict Content-Security-Policy
+(`script-src 'self'`, no `'unsafe-eval'`) and data values can never run as code.
+
+| Syntax | Example |
+|---|---|
+| Paths | `isAdmin`, `user.role`, `items.length`, `items.0.name` |
+| Literals | `'text'`, `"text"`, `42`, `-1.5`, `true`, `false`, `null`, `undefined` |
+| Negation | `!user.verified`, `-count` |
+| Comparison | `===`, `!==`, `==`, `!=`, `<`, `<=`, `>`, `>=` |
+| Logic | `&&`, `\|\|` |
+| Grouping | `(a \|\| b) && c` |
+
+Operators follow JavaScript precedence (`||` < `&&` < equality < comparison < `!`).
+A path that does not exist evaluates to `undefined`, so `{{#if missing}}` takes the
+`{{else}}` branch and `{{#if !missing}}` the first one.
+
+Function calls, assignments, arithmetic and other JavaScript syntax are not supported:
+such an expression logs `Error evaluating expression` to the console and evaluates
+to `false`.
+
 ### Nested Loops
 
 Combine loops for more complex structures:
@@ -304,6 +328,27 @@ Nedara.renderTemplate("user_interface", {
     },
 });
 ```
+
+### Table Markup in Templates
+
+The HTML parser moves loop text that sits directly inside `<table>`, `<tr>`… out of
+the table. Write these elements with a `nedara-` prefix in your templates; the prefix
+is removed from tag names at render time:
+
+```html
+<template id="user_table">
+  <nedara-table>
+    {{#users}}
+      <nedara-tr><nedara-td>{{name}}</nedara-td></nedara-tr>
+    {{/users}}
+  </nedara-table>
+</template>
+<!-- Output: <table><tr><td>John</td></tr>…</table> -->
+```
+
+Only `<nedara-…` and `</nedara-…` tags in the template markup are rewritten. Text,
+attribute values and rendered data (`{{name}}` set to `"nedara-monitoring"`) are left
+untouched.
 
 ## API Reference
 
@@ -530,6 +575,7 @@ NedaraJS has **no external dependencies**. It requires a modern browser with ES6
 ### Current Limitations
 
 - **Basic Templating**: The template system supports simple variable replacement, loops, and conditional logic but lacks advanced features like partials or custom helpers
+- **Limited Expressions**: `{{#if}}` accepts paths, literals, `!`, comparisons, `&&`, `||` and parentheses only — no function calls or arithmetic (see [Expression syntax](#expression-syntax))
 - **Widget Management**: Widgets must be manually registered and do not support automatic data binding
 - **Browser Support**: Requires modern browsers with ES6 support
 - **Single Template Source**: Currently only supports loading templates from a single HTML file
