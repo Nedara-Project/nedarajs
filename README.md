@@ -14,6 +14,10 @@ You can find an example application here: [NedaraJS Demo](https://github.com/Ned
 - [Nedara Monitoring](https://github.com/Nedara-Project/nedara-monitoring) > Linux and PostgreSQL Server Monitoring
 - [RandomDraw](https://randomdraw.io) > Real-time Collaborative Random Draw Tool
 - [Plob](https://plob.io) > Real-time file sharing with no external servers
+- [Nedara Connect](https://connect.nedara.org) > Sync your SSH connections everywhere, share them with your team
+- [Nedara Memo](https://memo.nedara.org) > Capture Ideas. Organize Tasks.Collaborate in Real Time
+- [Claude Code Web)(https://github.com/Nedara-Project/nedara-claude-code-web) > Your local Claude Code sessions, in the browser
+- [Kova](https://kova.nedara.org) > A vast procedural open-world survival MMO directly in your browser
 
 ...and more 🤠
 
